@@ -322,13 +322,13 @@ hr.rule{ border:none; border-top:1px solid var(--border); margin:14px 0; }
           <div><label>汇率 <span class="unit">¥/$</span></label><input id="fx" type="number" value="7.095" step="0.001"></div>
         </div>
         <div class="field-row two">
-          <div><label>广告消耗占比</label><input id="adpct" type="number" value="12" step="0.5"></div>
+          <div><label>广告消耗占比 <span class="unit">%</span></label><input id="adpct" type="number" value="12" step="0.5"></div>
           <div><label>预计库存周转 <span class="unit">周</span></label><input id="turnover" type="number" value="15" step="1"></div>
         </div>
         <div class="small-hint">周转&lt;22周不产生仓储利用率附加费；超过22周会自动叠加，越慢越贵（详见下方说明）。</div>
         <div class="field-row two">
-          <div><label>预计退货率</label><input id="refundpct" type="number" value="0" step="0.5"></div>
-          <div><label>Coupon费用率</label><input id="couponpct" type="number" value="0" step="0.5"></div>
+          <div><label>预计退货率 <span class="unit">%</span></label><input id="refundpct" type="number" value="0" step="0.5"></div>
+          <div><label>Coupon费用率 <span class="unit">%</span></label><input id="couponpct" type="number" value="0" step="0.5"></div>
         </div>
         <div class="small-hint">退货率：按预期比例扣减到手利润（视为整单损失）。Coupon费用率：按比例折减到手售价，再计算佣金与利润。均为手填假设，可按实际情况调整。</div>
       </div>
