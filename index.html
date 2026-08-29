@@ -205,8 +205,9 @@ hr.rule{ border:none; border-top:1px solid var(--border); margin:14px 0; }
 .margin-cards{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; }
 .margin-cards.three{ grid-template-columns:repeat(3,1fr); }
 .margin-cards.four{ grid-template-columns:repeat(2,1fr); }
-@media (max-width:480px){ .margin-cards.three, .margin-cards.four{ grid-template-columns:1fr; } }
-@media (min-width:640px){ .margin-cards.four{ grid-template-columns:repeat(4,1fr); } }
+.margin-cards.five{ grid-template-columns:repeat(2,1fr); }
+@media (max-width:480px){ .margin-cards.three, .margin-cards.four, .margin-cards.five{ grid-template-columns:1fr; } }
+@media (min-width:640px){ .margin-cards.four{ grid-template-columns:repeat(4,1fr); } .margin-cards.five{ grid-template-columns:repeat(3,1fr); } }
 .margin-card{
   border-radius:9px; padding:14px 12px 12px;
   border:1px solid var(--border);
@@ -379,7 +380,8 @@ hr.rule{ border:none; border-top:1px solid var(--border); margin:14px 0; }
               <option value="sea">普船海派 · ¥8.2/kg（大森林·美东经济卡派）</option>
               <option value="fastsea">快船 · ¥13.6/kg（大森林·华南ZIM美东卡派）</option>
               <option value="express">快递 · ¥97/kg（燕文头程专线，顶档价）</option>
-              <option value="own">公司自有报价 · ¥8/kg（普船海卡，经港口卡车拼车到FBA）</option>
+              <option value="own">公司自有-普船海卡 · ¥8/kg（经港口卡车拼车到FBA，慢）</option>
+              <option value="own_fast">公司自有-快船海派 · ¥18/kg（经港口海运快船到FBA，快）</option>
             </select>
           </div>
         </div>
@@ -403,7 +405,7 @@ hr.rule{ border:none; border-top:1px solid var(--border); margin:14px 0; }
         <div class="stat-line"><span class="k">采购成本（折USD）</span><span class="v" id="rCogsUsd">$0.00</span></div>
         <div class="stat-line"><span class="k">头程运费（折USD）</span><span class="v" id="rFreightUsd">$0.00</span></div>
 
-        <div class="margin-cards four">
+        <div class="margin-cards five">
           <div class="margin-card" id="card-sea">
             <div class="label">普船海派</div>
             <div class="pct" id="pct-sea">0.0%</div>
@@ -420,9 +422,14 @@ hr.rule{ border:none; border-top:1px solid var(--border); margin:14px 0; }
             <div class="amt" id="amt-express">净利润 $0.00 / 件</div>
           </div>
           <div class="margin-card" id="card-own">
-            <div class="label">公司自有报价</div>
+            <div class="label">公司自有-普船海卡</div>
             <div class="pct" id="pct-own">0.0%</div>
             <div class="amt" id="amt-own">净利润 $0.00 / 件</div>
+          </div>
+          <div class="margin-card" id="card-own_fast">
+            <div class="label">公司自有-快船海派</div>
+            <div class="pct" id="pct-own_fast">0.0%</div>
+            <div class="amt" id="amt-own_fast">净利润 $0.00 / 件</div>
           </div>
         </div>
 
@@ -532,7 +539,7 @@ const REFERRAL_CATS = [
   ["其他/默认(Everything Else)", 0.15],
 ];
 
-const FREIGHT_RATE = { sea: 8.2, fastsea: 13.6, express: 97, own: 8 }; // RMB/kg -- own: 公司自有报价·普船海卡(2026年时效表)
+const FREIGHT_RATE = { sea: 8.2, fastsea: 13.6, express: 97, own: 8, own_fast: 18 }; // RMB/kg -- own/own_fast: 公司自有报价·普船海卡/快船海派(2026年时效表)
 
 // ---- populate referral dropdown ----
 const refSel = document.getElementById('referralCat');
@@ -774,7 +781,7 @@ function calc(){
     return { pct: profit/price, amt: profit, freightUsd };
   }
 
-  const results = { sea: margin('sea'), fastsea: margin('fastsea'), express: margin('express'), own: margin('own') };
+  const results = { sea: margin('sea'), fastsea: margin('fastsea'), express: margin('express'), own: margin('own'), own_fast: margin('own_fast') };
   const main = results[freightMode];
 
   // ---- render ----
@@ -799,7 +806,7 @@ function calc(){
     card.classList.add(pct>=15 ? 'good' : pct>=5 ? 'warn' : 'bad');
     if(mode===freightMode) card.classList.add('selected');
   }
-  ['sea','fastsea','express','own'].forEach(mode=> paintCard(mode, results[mode]));
+  ['sea','fastsea','express','own','own_fast'].forEach(mode=> paintCard(mode, results[mode]));
 }
 
 document.querySelectorAll('input, select').forEach(el=> el.addEventListener('input', calc));
