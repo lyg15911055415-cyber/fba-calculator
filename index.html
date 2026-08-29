@@ -260,6 +260,31 @@ hr.rule{ border:none; border-top:1px solid var(--border); margin:14px 0; }
 }
 .autobtn:hover{ background:var(--accent); color:#fff; }
 .autobtn:active{ transform: scale(0.99); }
+
+.tier-table{
+  width:100%;
+  border-collapse:collapse;
+  margin:4px 0 12px;
+  font-size:11.5px;
+  font-family:'IBM Plex Mono',monospace;
+}
+.tier-table th{
+  text-align:left;
+  font-family:'IBM Plex Sans',sans-serif;
+  font-weight:600;
+  color:var(--text-muted);
+  padding:4px 6px;
+  border-bottom:1px solid var(--border);
+  font-size:11px;
+}
+.tier-table td{
+  padding:5px 6px;
+  border-bottom:1px dashed var(--border);
+  vertical-align:top;
+}
+.tier-table tr:nth-child(1) td:first-child{ color:var(--good); font-weight:600; }
+.tier-table tr:nth-child(2) td:first-child{ color:var(--warn); font-weight:600; }
+.tier-table tr:nth-child(3) td:first-child{ color:#c2740c; font-weight:600; }
 </style>
 
 <div class="wrap">
@@ -338,7 +363,8 @@ hr.rule{ border:none; border-top:1px solid var(--border); margin:14px 0; }
           <div><label>单箱重量上限 <span class="unit">kg</span></label><input id="maxCtnWeight" type="number" value="22.68" step="0.5"></div>
         </div>
         <button type="button" id="autoBoxBtn" class="autobtn">按包装尺寸自动计算外箱尺寸 + 最大装箱数</button>
-        <div class="small-hint" id="autoBoxHint">默认值 = Amazon FBA官方硬性限制：36×25×25英寸(91.44×63.5×63.5cm)、50磅(22.68kg)，2025-06-20起最长边由25in上调至36in（来源：Seller Central卖家论坛）。如果你用的物流商有更严格的自有产品限制（比如某些拼箱产品要求≤22kg/单箱），请按物流商实际要求调小后再计算。</div>
+        <div class="small-hint" id="autoBoxHint">最长边上限=Amazon FBA官方硬性限制(36in/91.44cm，2025-06-20起由25in上调，来源：Seller Central卖家论坛)；但实际推荐按货代操作经验分三级：≤60cm最优(避免尾程UPS/FedEx附加操作费)，60-63.5cm可接受(兼容AWD)，63.5-91.44cm合规但非优先。</div>
+        <div id="tierCompareTable"></div>
         <div class="field-row">
           <div><label>外箱长 <span class="unit">cm</span></label><input id="boxL" type="number" value="60" step="0.1"></div>
           <div><label>外箱宽 <span class="unit">cm</span></label><input id="boxW" type="number" value="50" step="0.1"></div>
@@ -550,17 +576,32 @@ function activeVal(id){ return document.getElementById(id).querySelector('.toggl
 function ceilStep(x, step){ return Math.ceil(Math.round((x/step)*1e9)/1e9); }
 
 // ---- auto-suggest outer carton dims + max qty from a single unit's packed dims ----
-// Amazon's real limit is asymmetric (one long edge up to 91.44cm, the other two capped
-// at 63.5cm each) -- not a cube. So we search all 6 axis assignments of (unitL,unitW,unitH)
-// AND all 3 choices of which resulting box edge plays the "long edge" role, and keep the
-// combination that fits the most whole units.
-function suggestCarton(unitL, unitW, unitH, unitWeightKg, maxLong, maxSide, maxWeightKg){
+// Amazon's hard FBA limit (91.44cm long edge / 63.5cm the other two / 22.68kg) is only
+// the outer ceiling. In real freight-forwarder practice the *usable* long edge is tiered:
+//   green  <=60cm    : preferred -- avoids oversize/handling surcharges from most carriers
+//   yellow 60-63.5cm : acceptable, AWD-compatible cube
+//   orange 63.5-91.44cm : FBA-legal but not preferred (UPS/FedEx additional-handling risk)
+//   red    >91.44cm  : not usable for a standard FBA carton
+// So instead of returning only the single max-qty box, we enumerate every valid
+// (orientation x long-axis-choice) combination up to the Amazon hard ceiling, tag each
+// with its tier, and rank by: qty desc -> tier asc (greener wins) -> CBM/pcs asc -> regularity.
+const TIER_THRESHOLDS = [60, 63.5, 91.44]; // cm, fixed reference bands (not user-editable)
+const TIER_LABELS = ['绿色推荐区(≤60cm)', '黄色可接受区(60-63.5cm)', '橙色FBA可用非优先(63.5-91.44cm)'];
+
+function tierOf(longestEdge){
+  if(longestEdge<=TIER_THRESHOLDS[0]) return 0;
+  if(longestEdge<=TIER_THRESHOLDS[1]) return 1;
+  if(longestEdge<=TIER_THRESHOLDS[2]) return 2;
+  return 3; // red, shouldn't occur since maxLong caps the search, kept for safety
+}
+
+function enumerateCartons(unitL, unitW, unitH, unitWeightKg, maxLong, maxSide, maxWeightKg){
   const dims = [unitL, unitW, unitH];
   const perms = [
     [0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0],
   ];
   const qtyByWeight = unitWeightKg>0 ? Math.floor(maxWeightKg/unitWeightKg) : Infinity;
-  let best = null;
+  const candidates = [];
   for(const [ia,ib,ic] of perms){
     const a=dims[ia], b=dims[ib], c=dims[ic]; // a,b = base layer edges; c = stacking height edge
     for(const longAxis of ['a','b','c']){
@@ -580,17 +621,33 @@ function suggestCarton(unitL, unitW, unitH, unitWeightKg, maxLong, maxSide, maxW
       const qty = perLayer*layers;
       const cartonL = nx*a, cartonW = ny*b, cartonH = layers*c;
       const cube = cartonL*cartonW*cartonH;
-      const util = (qty*unitL*unitW*unitH)/cube; // packing efficiency, tie-breaker
-      if(!best || qty>best.qty || (qty===best.qty && util>best.util)){
-        best = { qty, cartonL, cartonW, cartonH, util };
-      }
+      const util = (qty*unitL*unitW*unitH)/cube;
+      const longestEdge = Math.max(cartonL, cartonW, cartonH);
+      const edges = [cartonL, cartonW, cartonH];
+      const meanEdge = (edges[0]+edges[1]+edges[2])/3;
+      const regularity = Math.sqrt(edges.reduce((s,e)=>s+(e-meanEdge)**2,0)/3); // stddev, smaller = more cube-like
+      candidates.push({ qty, cartonL, cartonW, cartonH, cube, util, longestEdge, tier: tierOf(longestEdge), cbmPerPcs: cube/qty/1e6, regularity });
     }
   }
-  // fallback: nothing fit (e.g. the unit alone already exceeds the weight cap) -- ship 1/box
-  if(!best){
-    best = { qty: 1, cartonL: unitL, cartonW: unitW, cartonH: unitH, util: 1, overWeight: unitWeightKg>maxWeightKg };
+  if(candidates.length===0){
+    return { ranked: [], bestPerTier: [], top: { qty: 1, cartonL: unitL, cartonW: unitW, cartonH: unitH, util: 1, tier: tierOf(Math.max(unitL,unitW,unitH)), overWeight: unitWeightKg>maxWeightKg } };
   }
-  return best;
+  // priority: 按你要求的优先级 -- 数量优先，同数量下绿区优先，再比CBM/pcs，再比箱型规整度
+  candidates.sort((x,y)=> y.qty-x.qty || x.tier-y.tier || x.cbmPerPcs-y.cbmPerPcs || x.regularity-y.regularity);
+  const top = candidates[0];
+  // best candidate within each tier (for the comparison table), independently ranked by the same rule
+  const bestPerTier = [0,1,2].map(t=>{
+    const inTier = candidates.filter(c=>c.tier===t);
+    if(inTier.length===0) return null;
+    inTier.sort((x,y)=> y.qty-x.qty || x.cbmPerPcs-y.cbmPerPcs || x.regularity-y.regularity);
+    return inTier[0];
+  });
+  return { ranked: candidates, bestPerTier, top };
+}
+
+function fmtCarton(c){
+  if(!c) return '—（该分区无可行方案）';
+  return `${c.cartonL.toFixed(1)}×${c.cartonW.toFixed(1)}×${c.cartonH.toFixed(1)}cm / ${c.qty}件 / ${c.cbmPerPcs.toFixed(5)}m³/件`;
 }
 
 document.getElementById('autoBoxBtn').addEventListener('click', ()=>{
@@ -603,13 +660,17 @@ document.getElementById('autoBoxBtn').addEventListener('click', ()=>{
   const maxLong = +document.getElementById('maxCtnLong').value;
   const maxSide = +document.getElementById('maxCtnSide').value;
   const maxWeight = +document.getElementById('maxCtnWeight').value;
-  const r = suggestCarton(uL, uW, uH, uWeightKg, maxLong, maxSide, maxWeight);
-  document.getElementById('boxL').value = r.cartonL.toFixed(1);
-  document.getElementById('boxW').value = r.cartonW.toFixed(1);
-  document.getElementById('boxH').value = r.cartonH.toFixed(1);
-  document.getElementById('ctnQty').value = r.qty;
+  const { bestPerTier, top } = enumerateCartons(uL, uW, uH, uWeightKg, maxLong, maxSide, maxWeight);
+  document.getElementById('boxL').value = top.cartonL.toFixed(1);
+  document.getElementById('boxW').value = top.cartonW.toFixed(1);
+  document.getElementById('boxH').value = top.cartonH.toFixed(1);
+  document.getElementById('ctnQty').value = top.qty;
+  const tierNames = ['绿色', '黄色', '橙色', '红色'];
   document.getElementById('autoBoxHint').textContent =
-    `按当前包装尺寸/重量 + 上限（最长边≤${maxLong}cm、次长/最短边≤${maxSide}cm、单箱≤${maxWeight}kg）算出：外箱 ${r.cartonL.toFixed(1)}×${r.cartonW.toFixed(1)}×${r.cartonH.toFixed(1)}cm，可装 ${r.qty} 件，装箱利用率 ${(r.util*100).toFixed(0)}%。五个箱规/上限输入框仍可手动微调覆盖。`;
+    `推荐方案（${tierNames[top.tier]}区）：外箱 ${top.cartonL.toFixed(1)}×${top.cartonW.toFixed(1)}×${top.cartonH.toFixed(1)}cm，可装 ${top.qty} 件，装箱利用率 ${((top.util||1)*100).toFixed(0)}%。排序优先级：装箱数量 > 最长边≤60cm优先 > CBM/件更低 > 箱型更规整。五个箱规/上限输入框仍可手动微调覆盖。`;
+  const rows = bestPerTier.map((c,i)=> `<tr><td>${TIER_LABELS[i]}</td><td>${fmtCarton(c)}</td></tr>`).join('');
+  document.getElementById('tierCompareTable').innerHTML =
+    `<table class="tier-table"><thead><tr><th>分区</th><th>该分区最优方案</th></tr></thead><tbody>${rows}</tbody></table>`;
   calc();
 });
 
