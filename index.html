@@ -380,8 +380,8 @@ hr.rule{ border:none; border-top:1px solid var(--border); margin:14px 0; }
               <option value="sea">普船海派 · ¥8.2/kg（大森林·美东经济卡派）</option>
               <option value="fastsea">快船 · ¥13.6/kg（大森林·华南ZIM美东卡派）</option>
               <option value="express">快递 · ¥97/kg（燕文头程专线，顶档价）</option>
-              <option value="own">公司自有-普船海卡 · ¥8/kg（经港口卡车拼车到FBA，慢）</option>
-              <option value="own_fast">公司自有-快船海派 · ¥18/kg（经港口海运快船到FBA，快）</option>
+              <option value="own">公司自有-快船海卡 · ¥8/kg（AGL-美西快船海卡）</option>
+              <option value="own_fast">公司自有-普船海派 · ¥14/kg（美西普船海派）</option>
             </select>
           </div>
         </div>
@@ -422,12 +422,12 @@ hr.rule{ border:none; border-top:1px solid var(--border); margin:14px 0; }
             <div class="amt" id="amt-express">净利润 $0.00 / 件</div>
           </div>
           <div class="margin-card" id="card-own">
-            <div class="label">公司自有-普船海卡</div>
+            <div class="label">公司自有-快船海卡</div>
             <div class="pct" id="pct-own">0.0%</div>
             <div class="amt" id="amt-own">净利润 $0.00 / 件</div>
           </div>
           <div class="margin-card" id="card-own_fast">
-            <div class="label">公司自有-快船海派</div>
+            <div class="label">公司自有-普船海派</div>
             <div class="pct" id="pct-own_fast">0.0%</div>
             <div class="amt" id="amt-own_fast">净利润 $0.00 / 件</div>
           </div>
@@ -539,7 +539,7 @@ const REFERRAL_CATS = [
   ["其他/默认(Everything Else)", 0.15],
 ];
 
-const FREIGHT_RATE = { sea: 8.2, fastsea: 13.6, express: 97, own: 8, own_fast: 18 }; // RMB/kg -- own/own_fast: 公司自有报价·普船海卡/快船海派(2026年时效表)
+const FREIGHT_RATE = { sea: 8.2, fastsea: 13.6, express: 97, own: 8, own_fast: 14 }; // RMB/kg -- own: 公司自有·AGL-美西快船海卡；own_fast: 公司自有·美西普船海派(2026年时效表)
 
 // ---- populate referral dropdown ----
 const refSel = document.getElementById('referralCat');
