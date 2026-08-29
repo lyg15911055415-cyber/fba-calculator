@@ -407,22 +407,22 @@ hr.rule{ border:none; border-top:1px solid var(--border); margin:14px 0; }
           <div class="margin-card" id="card-sea">
             <div class="label">普船海派</div>
             <div class="pct" id="pct-sea">0.0%</div>
-            <div class="amt" id="amt-sea">$0.00 / 件</div>
+            <div class="amt" id="amt-sea">净利润 $0.00 / 件</div>
           </div>
           <div class="margin-card" id="card-fastsea">
             <div class="label">快船</div>
             <div class="pct" id="pct-fastsea">0.0%</div>
-            <div class="amt" id="amt-fastsea">$0.00 / 件</div>
+            <div class="amt" id="amt-fastsea">净利润 $0.00 / 件</div>
           </div>
           <div class="margin-card" id="card-express">
             <div class="label">快递</div>
             <div class="pct" id="pct-express">0.0%</div>
-            <div class="amt" id="amt-express">$0.00 / 件</div>
+            <div class="amt" id="amt-express">净利润 $0.00 / 件</div>
           </div>
           <div class="margin-card" id="card-own">
             <div class="label">公司自有报价</div>
             <div class="pct" id="pct-own">0.0%</div>
-            <div class="amt" id="amt-own">$0.00 / 件</div>
+            <div class="amt" id="amt-own">净利润 $0.00 / 件</div>
           </div>
         </div>
 
@@ -793,7 +793,7 @@ function calc(){
   function paintCard(mode, m){
     const pct = m.pct*100;
     document.getElementById('pct-'+mode).textContent = pct.toFixed(1)+'%';
-    document.getElementById('amt-'+mode).textContent = '$'+m.amt.toFixed(2)+' / 件';
+    document.getElementById('amt-'+mode).textContent = '净利润 $'+m.amt.toFixed(2)+' / 件';
     const card = document.getElementById('card-'+mode);
     card.classList.remove('good','warn','bad','selected');
     card.classList.add(pct>=15 ? 'good' : pct>=5 ? 'warn' : 'bad');
