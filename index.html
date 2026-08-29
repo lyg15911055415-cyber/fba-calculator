@@ -331,13 +331,14 @@ hr.rule{ border:none; border-top:1px solid var(--border); margin:14px 0; }
 
       <div class="card">
         <h2>头程运费 <span class="n">freight</span></h2>
-        <label>外箱自动推荐（按上方"产品尺寸与重量"反推）</label>
-        <div class="field-row two">
-          <div><label>单箱最长边上限 <span class="unit">cm</span></label><input id="maxCtnSide" type="number" value="63.5" step="0.5"></div>
-          <div><label>单箱最大重量上限 <span class="unit">kg</span></label><input id="maxCtnWeight" type="number" value="22" step="0.5"></div>
+        <label>外箱自动推荐（按上方"产品尺寸与重量"反推，默认按Amazon FBA官方硬性限制）</label>
+        <div class="field-row">
+          <div><label>最长边上限 <span class="unit">cm</span></label><input id="maxCtnLong" type="number" value="91.44" step="0.5"></div>
+          <div><label>次长/最短边上限 <span class="unit">cm</span></label><input id="maxCtnSide" type="number" value="63.5" step="0.5"></div>
+          <div><label>单箱重量上限 <span class="unit">kg</span></label><input id="maxCtnWeight" type="number" value="22.68" step="0.5"></div>
         </div>
         <button type="button" id="autoBoxBtn" class="autobtn">按包装尺寸自动计算外箱尺寸 + 最大装箱数</button>
-        <div class="small-hint" id="autoBoxHint">默认上限沿用大森林"王牌产品"纸箱要求（最长边&lt;63.5cm、单箱&lt;22kg），可按你实际用的物流商规则调整后重新计算。</div>
+        <div class="small-hint" id="autoBoxHint">默认值 = Amazon FBA官方硬性限制：36×25×25英寸(91.44×63.5×63.5cm)、50磅(22.68kg)，2025-06-20起最长边由25in上调至36in（来源：Seller Central卖家论坛）。如果你用的物流商有更严格的自有产品限制（比如某些拼箱产品要求≤22kg/单箱），请按物流商实际要求调小后再计算。</div>
         <div class="field-row">
           <div><label>外箱长 <span class="unit">cm</span></label><input id="boxL" type="number" value="60" step="0.1"></div>
           <div><label>外箱宽 <span class="unit">cm</span></label><input id="boxW" type="number" value="50" step="0.1"></div>
@@ -549,9 +550,11 @@ function activeVal(id){ return document.getElementById(id).querySelector('.toggl
 function ceilStep(x, step){ return Math.ceil(Math.round((x/step)*1e9)/1e9); }
 
 // ---- auto-suggest outer carton dims + max qty from a single unit's packed dims ----
-// Tries all 6 axis assignments of (unitL,unitW,unitH), fits as many whole units as the
-// max-side and max-weight limits allow, and keeps the assignment with the highest qty.
-function suggestCarton(unitL, unitW, unitH, unitWeightKg, maxSide, maxWeightKg){
+// Amazon's real limit is asymmetric (one long edge up to 91.44cm, the other two capped
+// at 63.5cm each) -- not a cube. So we search all 6 axis assignments of (unitL,unitW,unitH)
+// AND all 3 choices of which resulting box edge plays the "long edge" role, and keep the
+// combination that fits the most whole units.
+function suggestCarton(unitL, unitW, unitH, unitWeightKg, maxLong, maxSide, maxWeightKg){
   const dims = [unitL, unitW, unitH];
   const perms = [
     [0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0],
@@ -560,19 +563,32 @@ function suggestCarton(unitL, unitW, unitH, unitWeightKg, maxSide, maxWeightKg){
   let best = null;
   for(const [ia,ib,ic] of perms){
     const a=dims[ia], b=dims[ib], c=dims[ic]; // a,b = base layer edges; c = stacking height edge
-    const nx = Math.max(1, Math.floor(maxSide/a));
-    const ny = Math.max(1, Math.floor(maxSide/b));
-    const perLayer = nx*ny;
-    const layersByHeight = Math.max(1, Math.floor(maxSide/c));
-    const layersByWeight = Math.max(1, Math.floor(qtyByWeight/perLayer) || 1);
-    const layers = Math.max(1, Math.min(layersByHeight, layersByWeight));
-    const qty = perLayer*layers;
-    const cartonL = nx*a, cartonW = ny*b, cartonH = layers*c;
-    const cube = cartonL*cartonW*cartonH;
-    const util = (qty*unitL*unitW*unitH)/cube; // packing efficiency, tie-breaker
-    if(!best || qty>best.qty || (qty===best.qty && util>best.util)){
-      best = { qty, cartonL, cartonW, cartonH, util };
+    for(const longAxis of ['a','b','c']){
+      const capA = longAxis==='a' ? maxLong : maxSide;
+      const capB = longAxis==='b' ? maxLong : maxSide;
+      const capC = longAxis==='c' ? maxLong : maxSide;
+      const nx = Math.max(1, Math.floor(capA/a));
+      const ny = Math.max(1, Math.floor(capB/b));
+      const perLayer = nx*ny;
+      const layersByHeight = Math.max(1, Math.floor(capC/c));
+      // NOTE: do not force layersByWeight to at least 1 -- if even a single layer's
+      // weight (perLayer * unit weight) already exceeds the carton weight cap, this
+      // orientation is genuinely infeasible and must be skipped, not rounded up to 1.
+      const layersByWeight = Math.floor(qtyByWeight/perLayer);
+      const layers = Math.min(layersByHeight, layersByWeight);
+      if(layers < 1) continue; // infeasible under the weight cap -- skip this combo
+      const qty = perLayer*layers;
+      const cartonL = nx*a, cartonW = ny*b, cartonH = layers*c;
+      const cube = cartonL*cartonW*cartonH;
+      const util = (qty*unitL*unitW*unitH)/cube; // packing efficiency, tie-breaker
+      if(!best || qty>best.qty || (qty===best.qty && util>best.util)){
+        best = { qty, cartonL, cartonW, cartonH, util };
+      }
     }
+  }
+  // fallback: nothing fit (e.g. the unit alone already exceeds the weight cap) -- ship 1/box
+  if(!best){
+    best = { qty: 1, cartonL: unitL, cartonW: unitW, cartonH: unitH, util: 1, overWeight: unitWeightKg>maxWeightKg };
   }
   return best;
 }
@@ -584,15 +600,16 @@ document.getElementById('autoBoxBtn').addEventListener('click', ()=>{
   const uW = (+document.getElementById('W').value)*dimFactor;
   const uH = (+document.getElementById('H').value)*dimFactor;
   const uWeightKg = (+document.getElementById('wt').value)/1000;
+  const maxLong = +document.getElementById('maxCtnLong').value;
   const maxSide = +document.getElementById('maxCtnSide').value;
   const maxWeight = +document.getElementById('maxCtnWeight').value;
-  const r = suggestCarton(uL, uW, uH, uWeightKg, maxSide, maxWeight);
+  const r = suggestCarton(uL, uW, uH, uWeightKg, maxLong, maxSide, maxWeight);
   document.getElementById('boxL').value = r.cartonL.toFixed(1);
   document.getElementById('boxW').value = r.cartonW.toFixed(1);
   document.getElementById('boxH').value = r.cartonH.toFixed(1);
   document.getElementById('ctnQty').value = r.qty;
   document.getElementById('autoBoxHint').textContent =
-    `按当前包装尺寸/重量 + 上限（最长边≤${maxSide}cm、单箱≤${maxWeight}kg）算出：外箱 ${r.cartonL.toFixed(1)}×${r.cartonW.toFixed(1)}×${r.cartonH.toFixed(1)}cm，可装 ${r.qty} 件，装箱利用率 ${(r.util*100).toFixed(0)}%。四个箱规输入框仍可手动微调覆盖。`;
+    `按当前包装尺寸/重量 + 上限（最长边≤${maxLong}cm、次长/最短边≤${maxSide}cm、单箱≤${maxWeight}kg）算出：外箱 ${r.cartonL.toFixed(1)}×${r.cartonW.toFixed(1)}×${r.cartonH.toFixed(1)}cm，可装 ${r.qty} 件，装箱利用率 ${(r.util*100).toFixed(0)}%。五个箱规/上限输入框仍可手动微调覆盖。`;
   calc();
 });
 
