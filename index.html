@@ -371,8 +371,12 @@ hr.rule{ border:none; border-top:1px solid var(--border); margin:14px 0; }
           <div><label>次长/最短边上限 <span class="unit">cm</span></label><input id="maxCtnSide" type="number" value="63.5" step="0.5"></div>
           <div><label>单箱重量上限 <span class="unit">kg</span></label><input id="maxCtnWeight" type="number" value="15" step="0.5"></div>
         </div>
+        <div class="field-row">
+          <div><label>软包裹压缩系数（地毯/包类等可压缩材质，1=不压缩，越小装得越多）</label><input id="compressRatio" type="number" value="1" min="0.3" max="1" step="0.05"></div>
+          <div></div>
+        </div>
         <button type="button" id="autoBoxBtn" class="autobtn">按包装尺寸自动计算外箱尺寸 + 最大装箱数</button>
-        <div class="small-hint" id="autoBoxHint">尺寸上限=Amazon FBA官方硬性限制(36×25×25in/91.44×63.5×63.5cm，来源：Seller Central卖家论坛)，按货代经验分三级：≤60cm最优/60-63.5cm可接受/63.5-91.44cm合规非优先。<b>重量上限默认15kg（而非Amazon允许的22.68kg）</b>——用6款真实产品外箱反算验证过：排列组合数学完全吻合工厂实际箱规，但如果按22.68kg硬上限"能装多少装多少"，算出的数量会比工厂实际多装2-3倍，因为工厂通常按单人搬运习惯控制在15kg左右，不会撑到Amazon上限。这里给的仍是理论最大值，实际箱规请以工厂/供应商确认为准。</div>
+        <div class="small-hint" id="autoBoxHint">尺寸上限=Amazon FBA官方硬性限制(36×25×25in/91.44×63.5×63.5cm，来源：Seller Central卖家论坛)，按货代经验分三级：≤60cm最优/60-63.5cm可接受/63.5-91.44cm合规非优先。<b>重量上限默认15kg（而非Amazon允许的22.68kg）</b>——用6款真实产品外箱反算验证过：排列组合数学完全吻合工厂实际箱规，但如果按22.68kg硬上限"能装多少装多少"，算出的数量会比工厂实际多装2-3倍，因为工厂通常按单人搬运习惯控制在15kg左右，不会撑到Amazon上限。<b>软包裹压缩系数</b>：用25款真实产品数据反算发现，刚性长方体网格算法对地毯/包类等可压缩软包装会低估装箱数（实测最多差1倍），因为工厂会把相邻层交错挤压嵌套。默认1=按刚性长方体估算（偏保守），如果你的产品是可压缩软包装，可按实际箱规反推系数（如实际比估算多装1倍，填0.5）后再用。理论值，实际箱规仍以工厂/供应商确认为准。</div>
         <div id="tierCompareTable"></div>
         <div class="field-row">
           <div><label>外箱长 <span class="unit">cm</span></label><input id="boxL" type="number" value="60" step="0.1"></div>
@@ -643,7 +647,8 @@ function tierOf(longestEdge){
   return 3; // red, shouldn't occur since maxLong caps the search, kept for safety
 }
 
-function enumerateCartons(unitL, unitW, unitH, unitWeightKg, maxLong, maxSide, maxWeightKg){
+function enumerateCartons(unitL, unitW, unitH, unitWeightKg, maxLong, maxSide, maxWeightKg, compressRatio){
+  compressRatio = compressRatio>0 && compressRatio<=1 ? compressRatio : 1;
   const dims = [unitL, unitW, unitH];
   const perms = [
     [0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0],
@@ -652,6 +657,10 @@ function enumerateCartons(unitL, unitW, unitH, unitWeightKg, maxLong, maxSide, m
   const candidates = [];
   for(const [ia,ib,ic] of perms){
     const a=dims[ia], b=dims[ib], c=dims[ic]; // a,b = base layer edges; c = stacking height edge
+    // compressRatio<1 models soft/compressible goods (rugs, bags) that factories
+    // interleave/nest across layers -- only the stacking axis compresses, since
+    // that's the axis real packing photos show being squeezed layer-to-layer.
+    const cEff = c*compressRatio;
     for(const longAxis of ['a','b','c']){
       const capA = longAxis==='a' ? maxLong : maxSide;
       const capB = longAxis==='b' ? maxLong : maxSide;
@@ -659,7 +668,7 @@ function enumerateCartons(unitL, unitW, unitH, unitWeightKg, maxLong, maxSide, m
       const nx = Math.max(1, Math.floor(capA/a));
       const ny = Math.max(1, Math.floor(capB/b));
       const perLayer = nx*ny;
-      const layersByHeight = Math.max(1, Math.floor(capC/c));
+      const layersByHeight = Math.max(1, Math.floor(capC/cEff));
       // NOTE: do not force layersByWeight to at least 1 -- if even a single layer's
       // weight (perLayer * unit weight) already exceeds the carton weight cap, this
       // orientation is genuinely infeasible and must be skipped, not rounded up to 1.
@@ -667,7 +676,7 @@ function enumerateCartons(unitL, unitW, unitH, unitWeightKg, maxLong, maxSide, m
       const layers = Math.min(layersByHeight, layersByWeight);
       if(layers < 1) continue; // infeasible under the weight cap -- skip this combo
       const qty = perLayer*layers;
-      const cartonL = nx*a, cartonW = ny*b, cartonH = layers*c;
+      const cartonL = nx*a, cartonW = ny*b, cartonH = layers*cEff;
       const cube = cartonL*cartonW*cartonH;
       const util = (qty*unitL*unitW*unitH)/cube;
       const longestEdge = Math.max(cartonL, cartonW, cartonH);
@@ -708,7 +717,8 @@ document.getElementById('autoBoxBtn').addEventListener('click', ()=>{
   const maxLong = +document.getElementById('maxCtnLong').value;
   const maxSide = +document.getElementById('maxCtnSide').value;
   const maxWeight = +document.getElementById('maxCtnWeight').value;
-  const { bestPerTier, top } = enumerateCartons(uL, uW, uH, uWeightKg, maxLong, maxSide, maxWeight);
+  const compressRatio = +document.getElementById('compressRatio').value;
+  const { bestPerTier, top } = enumerateCartons(uL, uW, uH, uWeightKg, maxLong, maxSide, maxWeight, compressRatio);
   document.getElementById('boxL').value = top.cartonL.toFixed(1);
   document.getElementById('boxW').value = top.cartonW.toFixed(1);
   document.getElementById('boxH').value = top.cartonH.toFixed(1);
